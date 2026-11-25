@@ -1,0 +1,181 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  UseGuards,
+  ParseFloatPipe,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Public } from '../common/decorators/public.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import {
+  CreatePortfolioItemDto,
+  SubmitKycDto,
+  UpdateProfessionalProfileDto,
+} from './dto/update-professional-profile.dto';
+import { FilterProfessionalsDto } from './dto/filter-professionals.dto';
+import { BudgetBenchmarkDto } from './dto/budget-benchmark.dto';
+import { ProfessionalsService } from './professionals.service';
+
+@ApiTags('Professionals (Perfiles Pro, Portafolio, Ubicación & KYC)')
+@Controller('professionals')
+export class ProfessionalsController {
+  constructor(private readonly professionalsService: ProfessionalsService) {}
+
+  @Public()
+  @Get()
+  @ApiOperation({
+    summary: 'Buscar y filtrar profesionales por texto, categoría o localidad',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado de profesionales encontrados con métricas reales',
+  })
+  async searchProfessionals(@Query() dto: FilterProfessionalsDto) {
+    return this.professionalsService.searchProfessionals(dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Get('me')
+  @ApiOperation({ summary: 'Obtener mi perfil profesional' })
+  @ApiResponse({
+    status: 200,
+    description: 'Perfil profesional con categorías y portafolio',
+  })
+  async getMyProfile(@CurrentUser('id') userId: string) {
+    return this.professionalsService.getMyProfile(userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Put('me')
+  @ApiOperation({
+    summary:
+      'Crear o actualizar mi perfil profesional (radio de servicio, ubicación, tarifas)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Perfil profesional guardado exitosamente',
+  })
+  async updateMyProfile(
+    @CurrentUser('id') userId: string,
+    @Body() dto: UpdateProfessionalProfileDto,
+  ) {
+    return this.professionalsService.updateMyProfile(userId, dto);
+  }
+
+  @Public()
+  @Get('nearby')
+
+  @ApiOperation({
+    summary: 'Buscar profesionales cercanos por coordenadas geográficas',
+  })
+  @ApiQuery({ name: 'lat', required: true, type: Number, example: 40.4168 })
+  @ApiQuery({ name: 'lon', required: true, type: Number, example: -3.7038 })
+  @ApiQuery({ name: 'categoryId', required: false, type: String })
+  @ApiQuery({ name: 'skill', required: false, type: String })
+  async findNearby(
+    @Query('lat', ParseFloatPipe) lat: number,
+    @Query('lon', ParseFloatPipe) lon: number,
+    @Query('categoryId') categoryId?: string,
+    @Query('skill') skill?: string,
+  ) {
+    return this.professionalsService.findNearby(lat, lon, categoryId, skill);
+  }
+
+  @Public()
+  @Get(':id')
+  @ApiOperation({ summary: 'Ver perfil público de un profesional' })
+  @ApiResponse({
+    status: 200,
+    description: 'Perfil público, gigs activos, valoraciones y portafolio',
+  })
+  async getPublicProfile(@Param('id') id: string) {
+    return this.professionalsService.getPublicProfile(id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post('me/portfolio')
+  @ApiOperation({ summary: 'Añadir un proyecto al portafolio' })
+  @ApiResponse({ status: 201, description: 'Proyecto añadido al portafolio' })
+  async addPortfolioItem(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreatePortfolioItemDto,
+  ) {
+    return this.professionalsService.addPortfolioItem(userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post('me/portfolio/upload')
+  @ApiOperation({ summary: 'Subir imagen de portafolio a Cloudinary' })
+  @ApiResponse({ status: 200, description: 'URL segura de Cloudinary' })
+  async uploadPortfolioImage(
+    @CurrentUser('id') userId: string,
+    @Body('image') image: string,
+  ) {
+    return this.professionalsService.uploadPortfolioImage(userId, image);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Delete('me/portfolio/:id')
+
+  @ApiOperation({ summary: 'Eliminar un proyecto del portafolio' })
+  async deletePortfolioItem(
+    @CurrentUser('id') userId: string,
+    @Param('id') itemId: string,
+  ) {
+    return this.professionalsService.deletePortfolioItem(userId, itemId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post('me/kyc')
+  @ApiOperation({
+    summary: 'Subir documento para verificación KYC de identidad',
+  })
+  @ApiResponse({ status: 200, description: 'Documento enviado a revisión' })
+  async submitKyc(
+    @CurrentUser('id') userId: string,
+    @Body() dto: SubmitKycDto,
+  ) {
+    return this.professionalsService.submitKyc(userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post('tools/budget-benchmark')
+  @ApiOperation({
+    summary:
+      'Consultar benchmarking de precios de mercado con IA y plantillas de presupuestos (Exclusivo Yewi Pro)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Plantilla o estimación de precios con IA desglosada por mano de obra y materiales',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Acceso denegado: requiere suscripción activa a Yewi Pro (15,99 €/mes)',
+  })
+  async getBudgetBenchmark(
+    @CurrentUser('id') userId: string,
+    @Body() dto: BudgetBenchmarkDto,
+  ) {
+    return this.professionalsService.getBudgetBenchmark(userId, dto);
+  }
+}

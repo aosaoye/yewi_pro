@@ -1,0 +1,182 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import {
+  CancelOrderDto,
+  ConfirmOrderCheckoutDto,
+  CreateGigOrderDto,
+  OpenDisputeDto,
+  RequestRevisionDto,
+  SubmitDeliveryDto,
+  SubmitRequirementsDto,
+} from './dto/create-gig-order.dto';
+import { OrdersService } from './orders.service';
+
+@ApiTags('Orders (Gestión de Pedidos, Entregas, Revisiones & Escrow)')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+@Controller('orders')
+export class OrdersController {
+  constructor(private readonly ordersService: OrdersService) {}
+
+  @Post('gig/checkout-session')
+  @ApiOperation({
+    summary:
+      'Crear sesión de Stripe Checkout para pagar encargo de Gig con tarjeta',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Sesión de Stripe Checkout generada con éxito',
+  })
+  async createGigCheckoutSession(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateGigOrderDto,
+  ) {
+    return this.ordersService.createGigCheckoutSession(userId, dto);
+  }
+
+  @Post('gig/confirm-checkout')
+  @ApiOperation({
+    summary:
+      'Confirmar sesión de Stripe Checkout completada y materializar pedido en Escrow',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Pedido confirmado y fondos retenidos en Escrow',
+  })
+  async confirmGigCheckout(
+    @CurrentUser('id') userId: string,
+    @Body() dto: ConfirmOrderCheckoutDto,
+  ) {
+    return this.ordersService.confirmGigCheckoutSession(userId, dto.sessionId);
+  }
+
+  @Post('gig')
+  @ApiOperation({
+    summary:
+      'Comprar un paquete de Gig descontando saldo de Billetera y retener en Escrow (Cliente)',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Pedido creado exitosamente con fondos de saldo en Escrow',
+  })
+  async createGigOrder(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateGigOrderDto,
+  ) {
+    return this.ordersService.createGigOrder(userId, dto);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Listar mis pedidos (como cliente o profesional)' })
+  @ApiQuery({ name: 'role', enum: ['client', 'pro'], required: false })
+  async getMyOrders(
+    @CurrentUser('id') userId: string,
+    @Query('role') role?: 'client' | 'pro',
+  ) {
+    return this.ordersService.getMyOrders(userId, role);
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary:
+      'Ver detalle completo del pedido, entregas, chat y estado de Escrow',
+  })
+  async getOrderById(
+    @CurrentUser('id') userId: string,
+    @Param('id') orderId: string,
+  ) {
+    return this.ordersService.getOrderById(userId, orderId);
+  }
+
+  @Post(':id/requirements')
+  @ApiOperation({
+    summary: 'Enviar requerimientos para iniciar el pedido (Cliente)',
+  })
+  async submitRequirements(
+    @CurrentUser('id') userId: string,
+    @Param('id') orderId: string,
+    @Body() dto: SubmitRequirementsDto,
+  ) {
+    return this.ordersService.submitRequirements(userId, orderId, dto);
+  }
+
+  @Post(':id/deliveries')
+  @ApiOperation({
+    summary: 'Entregar trabajo final con archivos adjuntos (Profesional)',
+  })
+  async submitDelivery(
+    @CurrentUser('id') userId: string,
+    @Param('id') orderId: string,
+    @Body() dto: SubmitDeliveryDto,
+  ) {
+    return this.ordersService.submitDelivery(userId, orderId, dto);
+  }
+
+  @Post(':id/revisions')
+  @ApiOperation({
+    summary: 'Solicitar cambios/revisión sobre una entrega (Cliente)',
+  })
+  async requestRevision(
+    @CurrentUser('id') userId: string,
+    @Param('id') orderId: string,
+    @Body() dto: RequestRevisionDto,
+  ) {
+    return this.ordersService.requestRevision(userId, orderId, dto);
+  }
+
+  @Post(':id/approve')
+  @ApiOperation({
+    summary:
+      'Aprobar entrega, completar pedido y liberar fondos de Escrow al profesional (Cliente)',
+  })
+  async approveDelivery(
+    @CurrentUser('id') userId: string,
+    @Param('id') orderId: string,
+  ) {
+    return this.ordersService.approveDelivery(userId, orderId);
+  }
+
+  @Post(':id/dispute')
+  @ApiOperation({ summary: 'Abrir disputa en el centro de resolución' })
+  async openDispute(
+    @CurrentUser('id') userId: string,
+    @Param('id') orderId: string,
+    @Body() dto: OpenDisputeDto,
+  ) {
+    return this.ordersService.openDispute(userId, orderId, dto);
+  }
+
+  @Post(':id/cancel')
+  @ApiOperation({
+    summary:
+      'Cancelar pedido activo y reembolsar fondos de Escrow al cliente',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Pedido cancelado y fondos devueltos a la billetera',
+  })
+  async cancelOrder(
+    @CurrentUser('id') userId: string,
+    @Param('id') orderId: string,
+    @Body() dto: CancelOrderDto,
+  ) {
+    return this.ordersService.cancelOrder(userId, orderId, dto);
+  }
+}
+

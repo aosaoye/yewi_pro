@@ -1,0 +1,86 @@
+services:
+  - type: web
+    name: yewi-api
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start:prod
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PREFIX
+        value: api/v1
+      - key: APP_NAME
+        value: Yewi Marketplace API
+      - key: ENABLE_SWAGGER
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: yewi-db
+          property: connectionString
+      - key: DATABASE_RUN_MIGRATIONS
+        value: "true"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: yewi-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRATION
+        value: 15m
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_EXPIRATION
+        value: 7d
+      - key: THROTTLE_TTL
+        value: "60"
+      - key: THROTTLE_LIMIT
+        value: "100"
+      - key: CORS_ORIGIN
+        value: https://yewi.app,http://localhost:8081,http://localhost:19006,http://localhost:5173
+      - key: PUBLIC_APP_URL
+        value: https://yewi.app
+      - key: API_PUBLIC_URL
+        sync: false
+      - key: STORAGE_DRIVER
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRO_PRICE_ID
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_JWKS_URL
+        sync: false
+      - key: CLERK_ISSUER
+        sync: false
+      - key: PLATFORM_COMMISSION_PERCENTAGE
+        value: "15"
+      - key: MAX_PROS_PER_LEAD
+        value: "5"
+      - key: AUTO_COMPLETE_ORDER_DAYS
+        value: "3"
+      - key: DEFAULT_CREDIT_PRICE_EUR
+        value: "1.0"
+
+  - type: keyvalue
+    name: yewi-redis
+    plan: free
+    ipAllowList: []
+
+databases:
+  - name: yewi-db
+    databaseName: yewi_db
+    user: yewi
+    plan: free
