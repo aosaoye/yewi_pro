@@ -80,7 +80,7 @@ export default function ProfileHomeScreen() {
   const myProQuery = useMyProProfile(hasSession && isProMode);
   const myReviewsQuery = useUserReviews(
     meQuery.data?.id,
-    hasSession && Boolean(meQuery.data?.id),
+    hasSession && isProMode && Boolean(meQuery.data?.id),
   );
 
   const updateProfile = useUpdateProfile();
@@ -176,19 +176,15 @@ export default function ProfileHomeScreen() {
     ? savedProIds.filter((id) => id !== ownProId).length
     : savedProIds.length;
 
-  const profileTabs: readonly ProfileTab<ProfileTabId>[] = [
-    {
-      id: 'publicaciones',
-      label: isProMode ? 'Servicios' : 'Solicitudes',
-      icon: isProMode ? 'layers' : 'clipboard',
-    },
-    ...(isProMode
-      ? [{ id: 'portafolio' as const, label: 'Portafolio', icon: 'image' as const }]
-      : []),
-    { id: 'resenas', label: 'Reseñas', icon: 'star' },
-    { id: 'pedidos', label: 'Pedidos', icon: 'shopping-bag' },
-    { id: 'clientes', label: 'Clientes', icon: 'users' },
-  ];
+  const profileTabs: readonly ProfileTab<ProfileTabId>[] = isProMode
+    ? [
+        { id: 'publicaciones', label: 'Servicios', icon: 'layers' },
+        { id: 'portafolio', label: 'Portafolio', icon: 'image' },
+        { id: 'resenas', label: 'Reseñas', icon: 'star' },
+        { id: 'pedidos', label: 'Pedidos', icon: 'shopping-bag' },
+        { id: 'clientes', label: 'Clientes', icon: 'users' },
+      ]
+    : [];
 
   const handleShare = async () => {
     try {
@@ -329,13 +325,17 @@ export default function ProfileHomeScreen() {
             router.push('/(tabs)/profile/following?tab=following' as never),
           accessibilityLabel: 'Ver a quién sigues',
         },
-        {
-          value: followersCount,
-          label: 'Seguidores',
-          onPress: () =>
-            router.push('/(tabs)/profile/following?tab=followers' as never),
-          accessibilityLabel: 'Ver seguidores',
-        },
+        ...(isProMode
+          ? [
+              {
+                value: followersCount,
+                label: 'Seguidores',
+                onPress: () =>
+                  router.push('/(tabs)/profile/following?tab=followers' as never),
+                accessibilityLabel: 'Ver seguidores',
+              },
+            ]
+          : []),
       ]}
       actions={[
         {
@@ -357,7 +357,40 @@ export default function ProfileHomeScreen() {
       loading={meQuery.isLoading}
       overlays={overlays}
     >
-      {activeTab === 'resenas' ? (
+      {!isProMode ? (
+        <View style={{ paddingTop: space.md }}>
+          <ListGroup title="Tu cuenta">
+            <ListRow
+              icon="clipboard"
+              plainIcon
+              title="Mis encargos"
+              subtitle={`${(myRequestsQuery.data ?? []).length} solicitudes · ${orders.length} pedidos`}
+              chevron
+              onPress={() => router.navigate('/(tabs)/requests' as never)}
+            />
+            <ListRow
+              icon="users"
+              plainIcon
+              title="Profesionales seguidos"
+              subtitle={`${followingCount} guardados`}
+              chevron
+              onPress={() =>
+                router.push('/(tabs)/profile/following?tab=following' as never)
+              }
+            />
+            <ListRow
+              icon="credit-card"
+              plainIcon
+              title="Billetera y pagos"
+              subtitle={formatEur(walletBalance)}
+              chevron
+              onPress={() => router.push('/wallet' as never)}
+            />
+          </ListGroup>
+        </View>
+      ) : null}
+
+      {isProMode && activeTab === 'resenas' ? (
         <View>
           {(myReviewsQuery.data ?? []).length > 0 ? (
             (myReviewsQuery.data ?? []).map((rev, idx) => (
@@ -375,7 +408,7 @@ export default function ProfileHomeScreen() {
         </View>
       ) : null}
 
-      {activeTab === 'pedidos' ? (
+      {isProMode && activeTab === 'pedidos' ? (
         <View>
           {orders.length > 0 ? (
             orders.map((ord, idx) => (
@@ -402,7 +435,7 @@ export default function ProfileHomeScreen() {
         </View>
       ) : null}
 
-      {activeTab === 'publicaciones' ? (
+      {isProMode && activeTab === 'publicaciones' ? (
         <View>
           {isProMode ? (
             (myGigsQuery.data ?? []).length > 0 ? (
@@ -447,7 +480,7 @@ export default function ProfileHomeScreen() {
         </View>
       ) : null}
 
-      {activeTab === 'portafolio' ? (
+      {isProMode && activeTab === 'portafolio' ? (
         <View style={s.portfolioTabWrap}>
           {portfolioItems.length > 0 ? (
             <>
@@ -501,7 +534,7 @@ export default function ProfileHomeScreen() {
         </View>
       ) : null}
 
-      {activeTab === 'clientes' ? (
+      {isProMode && activeTab === 'clientes' ? (
         clientsList.length > 0 ? (
           <ListGroup>
             {clientsList.map((client) => (

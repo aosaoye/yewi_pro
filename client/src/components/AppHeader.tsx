@@ -1,6 +1,12 @@
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon, Avatar, fonts, gutter, type IconName, space, Text, useTheme } from '@/ui';
 
@@ -31,12 +37,23 @@ interface AppHeaderProps {
   insetTop?: boolean;
 }
 
+interface TabLayout {
+  x: number;
+  width: number;
+}
+
+const SLIDE_TIMING = {
+  duration: 240,
+  easing: Easing.out(Easing.cubic),
+};
+
 function HeaderTabItem({
   item,
   isActive,
   expanded,
   activeColor,
   inactiveColor,
+  onLayout,
   onPress,
 }: {
   item: AppHeaderTab;
@@ -44,46 +61,26 @@ function HeaderTabItem({
   expanded: boolean;
   activeColor: string;
   inactiveColor: string;
+  onLayout: (layout: TabLayout) => void;
   onPress: () => void;
 }) {
-  const [progress] = useState(() => new Animated.Value(isActive ? 1 : 0));
+  const activeSV = useSharedValue(isActive ? 1 : 0);
 
   useEffect(() => {
-    Animated.timing(progress, {
-      toValue: isActive ? 1 : 0,
-      duration: 240,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [isActive, progress]);
+    activeSV.value = withTiming(isActive ? 1 : 0, SLIDE_TIMING);
+  }, [isActive, activeSV]);
 
-  const iconWidth = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 16],
-  });
-  const iconMarginRight = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 6],
-  });
-  const iconOpacity = progress.interpolate({
-    inputRange: [0, 0.2, 1],
-    outputRange: [0, 0.25, 1],
-  });
-  const iconScale = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.35, 1],
-  });
-  const iconTranslateX = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-6, 0],
-  });
-  const indicatorScaleX = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.3, 1],
-  });
+  const iconAnimStyle = useAnimatedStyle(() => ({
+    opacity: 0.6 + activeSV.value * 0.4,
+    transform: [{ scale: 0.92 + activeSV.value * 0.08 }],
+  }));
 
   return (
     <Pressable
+      onLayout={(e) => {
+        const { x, width } = e.nativeEvent.layout;
+        onLayout({ x, width });
+      }}
       onPress={onPress}
       style={({ pressed }) => [
         expanded ? s.tabExpandedItem : s.tabItem,
@@ -95,17 +92,7 @@ function HeaderTabItem({
     >
       <View style={s.tabLabelRow}>
         {item.icon ? (
-          <Animated.View
-            style={[
-              s.tabIconSlot,
-              {
-                width: iconWidth,
-                marginRight: iconMarginRight,
-                opacity: iconOpacity,
-                transform: [{ scale: iconScale }, { translateX: iconTranslateX }],
-              },
-            ]}
-          >
+          <Animated.View style={[s.tabIconSlot, iconAnimStyle]}>
             <AppIcon
               name={item.icon}
               size={15}
@@ -118,31 +105,19 @@ function HeaderTabItem({
           numberOfLines={1}
           style={[
             s.tabText,
-            isActive && s.tabTextActive,
             { color: isActive ? activeColor : inactiveColor },
           ]}
         >
           {item.label}
         </Text>
       </View>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          s.indicator,
-          {
-            backgroundColor: activeColor,
-            opacity: progress,
-            transform: [{ scaleX: indicatorScaleX }],
-          },
-        ]}
-      />
     </Pressable>
   );
 }
 
 /**
  * Topbar limpio y equilibrado en 3 zonas (`Avatar | Título centrado | Acciones`)
- * más barra animada de pestañas al 100% de ancho. Se inserta dentro del scroll.
+ * más barra animada de pestañas al 100% de ancho con indicador deslizante 100% GPU.
  */
 export function AppHeader({
   userName = 'Yewi',
@@ -165,6 +140,54 @@ export function AppHeader({
   const hasTabs = Boolean(tabs && tabs.length > 0);
   const isFewTabs = Boolean(tabs && tabs.length <= 3);
 
+  const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const layoutsRef = useRef<Record<string, TabLayout>>({});
+  const scrollWidthRef = useRef(0);
+  const hasMeasuredRef = useRef(false);
+
+  const indicatorCenterX = useSharedValue(0);
+  const indicatorScaleX = useSharedValue(0);
+  const indicatorOpacity = useSharedValue(0);
+
+  const syncIndicator = (key: string | undefined, animate: boolean) => {
+    if (key === undefined) return;
+    const layout = layoutsRef.current[key];
+    if (!layout || layout.width <= 0) return;
+
+    const inset = isFewTabs ? Math.round(layout.width * 0.16) : 4;
+    const targetW = Math.max(16, layout.width - inset * 2);
+    const targetCenterX = layout.x + inset + targetW / 2;
+
+    if (!animate || !hasMeasuredRef.current) {
+      indicatorCenterX.value = targetCenterX;
+      indicatorScaleX.value = targetW;
+      indicatorOpacity.value = 1;
+      hasMeasuredRef.current = true;
+    } else {
+      indicatorCenterX.value = withTiming(targetCenterX, SLIDE_TIMING);
+      indicatorScaleX.value = withTiming(targetW, SLIDE_TIMING);
+      indicatorOpacity.value = 1;
+    }
+
+    if (!isFewTabs && scrollRef.current && scrollWidthRef.current > 0) {
+      const centerOffset = layout.x + layout.width / 2 - scrollWidthRef.current / 2;
+      scrollRef.current.scrollTo({ x: Math.max(0, centerOffset), animated: animate });
+    }
+  };
+
+  useEffect(() => {
+    syncIndicator(activeTab, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isFewTabs, tabs?.length]);
+
+  const indicatorStyle = useAnimatedStyle(() => ({
+    opacity: indicatorOpacity.value,
+    transform: [
+      { translateX: indicatorCenterX.value },
+      { scaleX: indicatorScaleX.value },
+    ],
+  }));
+
   const rightActions: AppHeaderAction[] = actions
     ? actions
     : [
@@ -181,6 +204,13 @@ export function AppHeader({
             ]
           : []),
       ];
+
+  const handleTabLayout = (key: string, layout: TabLayout) => {
+    layoutsRef.current[key] = layout;
+    if (key === activeTab) {
+      syncIndicator(key, hasMeasuredRef.current);
+    }
+  };
 
   return (
     <View
@@ -250,28 +280,54 @@ export function AppHeader({
                 expanded
                 activeColor={activeColor}
                 inactiveColor={inactiveColor}
+                onLayout={(layout) => handleTabLayout(item.key, layout)}
                 onPress={() => onSelectTab?.(item.key)}
               />
             ))}
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                s.indicator,
+                { backgroundColor: activeColor },
+                indicatorStyle,
+              ]}
+            />
           </View>
         ) : (
-          <View style={s.tabsWrapper}>
+          <View
+            style={s.tabsWrapper}
+            onLayout={(e) => {
+              scrollWidthRef.current = e.nativeEvent.layout.width;
+            }}
+          >
             <ScrollView
+              ref={scrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={s.tabsScrollContent}
             >
-              {tabs.map((item) => (
-                <HeaderTabItem
-                  key={item.key}
-                  item={item}
-                  isActive={activeTab === item.key}
-                  expanded={false}
-                  activeColor={activeColor}
-                  inactiveColor={inactiveColor}
-                  onPress={() => onSelectTab?.(item.key)}
+              <View style={s.tabsScrollTrack}>
+                {tabs.map((item) => (
+                  <HeaderTabItem
+                    key={item.key}
+                    item={item}
+                    isActive={activeTab === item.key}
+                    expanded={false}
+                    activeColor={activeColor}
+                    inactiveColor={inactiveColor}
+                    onLayout={(layout) => handleTabLayout(item.key, layout)}
+                    onPress={() => onSelectTab?.(item.key)}
+                  />
+                ))}
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    s.indicator,
+                    { backgroundColor: activeColor },
+                    indicatorStyle,
+                  ]}
                 />
-              ))}
+              </View>
             </ScrollView>
           </View>
         )
@@ -343,13 +399,13 @@ const s = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
     paddingHorizontal: space.sm,
+    position: 'relative',
   },
   tabExpandedItem: {
     flex: 1,
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
     paddingHorizontal: 4,
   },
   tabsWrapper: {
@@ -357,14 +413,18 @@ const s = StyleSheet.create({
   },
   tabsScrollContent: {
     paddingHorizontal: gutter,
+  },
+  tabsScrollTrack: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: space.lg,
+    height: 46,
+    position: 'relative',
   },
   tabItem: {
     height: 46,
     justifyContent: 'center',
     alignItems: 'center',
-    position: 'relative',
     paddingHorizontal: 4,
   },
   tabLabelRow: {
@@ -372,24 +432,21 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   tabIconSlot: {
+    width: 16,
     height: 18,
+    marginRight: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   tabText: {
     fontSize: 15,
-    fontFamily: fonts.medium,
-  },
-  tabTextActive: {
-    fontFamily: fonts.bold,
+    fontFamily: fonts.semibold,
   },
   indicator: {
     position: 'absolute',
     bottom: 0,
-    left: 4,
-    right: 4,
+    left: 0,
+    width: 1,
     height: 2.5,
-    borderRadius: 2,
   },
 });

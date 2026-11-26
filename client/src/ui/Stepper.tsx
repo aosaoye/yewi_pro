@@ -23,7 +23,6 @@ export function Stepper({ steps, current, onSelect }: Props) {
   const { colors } = useTheme();
   const safeTotal = Math.max(1, steps.length);
   const clamped = Math.max(0, Math.min(current, safeTotal - 1));
-  const progressRatio = (clamped + 1) / safeTotal;
 
   return (
     <View
@@ -35,24 +34,6 @@ export function Stepper({ steps, current, onSelect }: Props) {
         },
       ]}
     >
-      {/* Barra superior estilo Google */}
-      <View
-        style={[
-          s.progressTrack,
-          { backgroundColor: colors.surfaceSubtle },
-        ]}
-      >
-        <View
-          style={[
-            s.progressFill,
-            {
-              width: `${Math.round(progressRatio * 100)}%`,
-              backgroundColor: colors.primary,
-            },
-          ]}
-        />
-      </View>
-
       {/* Fila de círculos distribuidos al 100% del ancho */}
       <View style={s.trackRow}>
         {steps.map((step, i) => {
@@ -159,20 +140,10 @@ const s = StyleSheet.create({
   wrap: {
     width: '100%',
     paddingHorizontal: gutter,
-    paddingTop: space.xs,
+    paddingTop: space.sm,
     paddingBottom: space.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 8,
-  },
-  progressTrack: {
-    width: '100%',
-    height: 4,
-    borderRadius: radius.full,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: radius.full,
   },
   trackRow: {
     width: '100%',

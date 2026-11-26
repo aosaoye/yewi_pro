@@ -144,7 +144,25 @@ export class LeadsService {
       });
     }
     if (!category) {
-      throw new BadRequestException('No existe una categoría válida disponible');
+      const fallbackName = dto.category?.trim() || 'Electricidad';
+      const fallbackSlug =
+        fallbackName
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '') || 'general';
+      category = await this.categoryRepo.save(
+        this.categoryRepo.create({
+          name: fallbackName,
+          slug: fallbackSlug,
+          description: `Servicios de ${fallbackName}`,
+          icon: 'layers',
+          isActive: true,
+          baseLeadCreditCost: 8,
+          sortOrder: 1,
+        }),
+      );
     }
 
     const maxUnlocks =

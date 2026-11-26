@@ -165,3 +165,11 @@ Este documento contiene las restricciones y estándares visuales obligatorios de
 - **PROHIBIDO** permitir múltiples pulsaciones o solicitudes simultáneas en botones de publicación, creación, compra, pago, recarga, retiro, suscripción o liberación de Escrow.
 - **Primitivos UI bloqueantes (`Button`, `IconButton`, `Pill` / `PillButton`)**: Todo botón interactivo debe bloquear nuevas pulsaciones de forma síncrona mediante `useRef` + estado `loading` / `disabled` mientras la promesa de `onPress` esté en curso.
 - **Candado síncrono en pantallas críticas**: Toda pantalla de envío, compra o pago debe usar además un candado `useRef(false)` activado **antes** del primer `await`, mantener el botón con `loading` + `disabled` durante toda la operación, **no liberar el candado tras un éxito que navega fuera de la pantalla** (liberándolo únicamente en `catch` o si el usuario permanece en la vista), y deshabilitar simultáneamente todos los botones de pago hermanos (por ejemplo `Saldo` y `Pagar tarjeta`).
+
+---
+
+## 21. Animaciones Fluidas en Pestañas y Steppers sin Elementos Duplicados
+- **PROHIBIDO animar propiedades de layout (`width`, `marginLeft`, `marginRight`, `padding`) o cambiar el peso de fuente (`fontFamily: medium → bold`) al activar pestañas horizontales o `ScrollView` de categorías**, porque provoca recálculos de layout por fotograma y hace que las pestañas adyacentes salten o choquen entre sí como bloques.
+- Toda barra de pestañas (`AppHeader`, `TabStrip`) debe mantener **anchos 100% estables** en sus ítems (`fontFamily` constante, iconos con espacio fijo) y animar el **indicador inferior deslizante exclusivamente por GPU (`transform: [{ translateX }, { scaleX }]` sobre un nodo de `width: 1`)** con `react-native-reanimated` (`withTiming` en el hilo UI).
+- Comprobar siempre `key === undefined` (nunca `!key`) para que pestañas con clave vacía como `Todos` (`key: ''`) también animen el indicador.
+- En flujos con `<Stepper />` (`1 --- 2 --- 3`), **PROHIBIDO** añadir una barra de progreso lineal encima de los círculos numerados para evitar mostrar dos steppers duplicados.

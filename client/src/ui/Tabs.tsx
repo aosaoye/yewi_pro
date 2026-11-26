@@ -1,14 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { AppIcon, type IconName } from './Icon';
 import {
-  Animated,
-  Easing,
   Pressable,
   StyleSheet,
   View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { PillTab, type PillCarouselOption, type PillSize, type PillTone } from './Pill';
 import { Text } from './Text';
 import { fonts, space, useTheme } from './theme';
@@ -19,12 +23,23 @@ export interface TabStripOption<K extends string> {
   icon?: IconName;
 }
 
+interface TabLayout {
+  x: number;
+  width: number;
+}
+
+const SLIDE_TIMING = {
+  duration: 240,
+  easing: Easing.out(Easing.cubic),
+};
+
 function TabStripItem<K extends string>({
   item,
   active,
   variant,
   activeColor,
   inactiveColor,
+  onLayout,
   onPress,
 }: {
   item: TabStripOption<K>;
@@ -32,43 +47,19 @@ function TabStripItem<K extends string>({
   variant: 'equal' | 'fitted';
   activeColor: string;
   inactiveColor: string;
+  onLayout: (layout: TabLayout) => void;
   onPress: () => void;
 }) {
-  const [progress] = useState(() => new Animated.Value(active ? 1 : 0));
+  const activeSV = useSharedValue(active ? 1 : 0);
 
   useEffect(() => {
-    Animated.timing(progress, {
-      toValue: active ? 1 : 0,
-      duration: 240,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [active, progress]);
+    activeSV.value = withTiming(active ? 1 : 0, SLIDE_TIMING);
+  }, [active, activeSV]);
 
-  const iconWidth = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 16],
-  });
-  const iconMarginRight = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 6],
-  });
-  const iconOpacity = progress.interpolate({
-    inputRange: [0, 0.2, 1],
-    outputRange: [0, 0.25, 1],
-  });
-  const iconScale = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.35, 1],
-  });
-  const iconTranslateX = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-6, 0],
-  });
-  const indicatorScaleX = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.3, 1],
-  });
+  const iconAnimStyle = useAnimatedStyle(() => ({
+    opacity: 0.6 + activeSV.value * 0.4,
+    transform: [{ scale: 0.92 + activeSV.value * 0.08 }],
+  }));
 
   const fg = active ? activeColor : inactiveColor;
 
@@ -77,6 +68,10 @@ function TabStripItem<K extends string>({
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       accessibilityLabel={item.label}
+      onLayout={(e) => {
+        const { x, width } = e.nativeEvent.layout;
+        onLayout({ x, width });
+      }}
       onPress={onPress}
       style={({ pressed }) => [
         s.tabItem,
@@ -86,50 +81,25 @@ function TabStripItem<K extends string>({
     >
       <View style={s.tabContent}>
         {item.icon ? (
-          <Animated.View
-            style={[
-              s.tabIconSlot,
-              {
-                width: iconWidth,
-                marginRight: iconMarginRight,
-                opacity: iconOpacity,
-                transform: [{ scale: iconScale }, { translateX: iconTranslateX }],
-              },
-            ]}
-          >
+          <Animated.View style={[s.tabIconSlot, iconAnimStyle]}>
             <AppIcon name={item.icon} size={15} color={fg} />
           </Animated.View>
         ) : null}
         <Text
           variant="heading"
           numberOfLines={1}
-          style={[
-            s.tabText,
-            active && s.tabTextActive,
-            { color: fg },
-          ]}
+          style={[s.tabText, { color: fg }]}
         >
           {item.label}
         </Text>
       </View>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          s.indicator,
-          {
-            backgroundColor: activeColor,
-            opacity: progress,
-            transform: [{ scaleX: indicatorScaleX }],
-          },
-        ]}
-      />
     </Pressable>
   );
 }
 
 /**
- * Barra superior de pestañas a ancho completo (`width: '100%'`), con la misma
- * animación y dimensiones que las pestañas de `AppHeader` (DESIGN_RULES §3 y §8).
+ * Barra superior de pestañas a ancho completo (`width: '100%'`), con anchos
+ * estables e indicador deslizante 100% GPU en hilo UI (DESIGN_RULES §3 y §8).
  */
 export function TabStrip<K extends string>({
   options,
@@ -145,6 +115,53 @@ export function TabStrip<K extends string>({
   style?: StyleProp<ViewStyle>;
 }) {
   const { colors } = useTheme();
+  const layoutsRef = useRef<Record<string, TabLayout>>({});
+  const hasMeasuredRef = useRef(false);
+
+  const indicatorCenterX = useSharedValue(0);
+  const indicatorScaleX = useSharedValue(0);
+  const indicatorOpacity = useSharedValue(0);
+
+  const syncIndicator = (key: K, animate: boolean) => {
+    if (key === undefined) return;
+    const layout = layoutsRef.current[key];
+    if (!layout || layout.width <= 0) return;
+
+    const inset = Math.round(layout.width * 0.16);
+    const targetW = Math.max(16, layout.width - inset * 2);
+    const targetCenterX = layout.x + inset + targetW / 2;
+
+    if (!animate || !hasMeasuredRef.current) {
+      indicatorCenterX.value = targetCenterX;
+      indicatorScaleX.value = targetW;
+      indicatorOpacity.value = 1;
+      hasMeasuredRef.current = true;
+    } else {
+      indicatorCenterX.value = withTiming(targetCenterX, SLIDE_TIMING);
+      indicatorScaleX.value = withTiming(targetW, SLIDE_TIMING);
+      indicatorOpacity.value = 1;
+    }
+  };
+
+  useEffect(() => {
+    syncIndicator(value, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, options.length]);
+
+  const indicatorStyle = useAnimatedStyle(() => ({
+    opacity: indicatorOpacity.value,
+    transform: [
+      { translateX: indicatorCenterX.value },
+      { scaleX: indicatorScaleX.value },
+    ],
+  }));
+
+  const handleTabLayout = (key: K, layout: TabLayout) => {
+    layoutsRef.current[key] = layout;
+    if (key === value) {
+      syncIndicator(key, hasMeasuredRef.current);
+    }
+  };
 
   return (
     <View
@@ -166,9 +183,18 @@ export function TabStrip<K extends string>({
           variant={variant}
           activeColor={colors.text}
           inactiveColor={colors.textMuted}
+          onLayout={(layout) => handleTabLayout(item.key, layout)}
           onPress={() => onChange(item.key)}
         />
       ))}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          s.indicator,
+          { backgroundColor: colors.text },
+          indicatorStyle,
+        ]}
+      />
     </View>
   );
 }
@@ -216,12 +242,12 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     borderBottomWidth: StyleSheet.hairlineWidth,
+    position: 'relative',
   },
   tabItem: {
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
   tabEqual: {
     flex: 1,
@@ -236,25 +262,22 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   tabIconSlot: {
+    width: 16,
     height: 16,
+    marginRight: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   tabText: {
     fontSize: 14.5,
     fontFamily: fonts.semibold,
   },
-  tabTextActive: {
-    fontFamily: fonts.bold,
-  },
   indicator: {
     position: 'absolute',
     bottom: 0,
-    left: '16%',
-    right: '16%',
+    left: 0,
+    width: 1,
     height: 2.5,
-    borderRadius: 2,
   },
   segmented: {
     width: '100%',

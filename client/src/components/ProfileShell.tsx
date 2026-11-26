@@ -429,11 +429,13 @@ export function ProfileShell<TabId extends string>({
             </View>
 
             {/* Pestañas horizontales de ancho completo */}
-            <ProfileTabs
-              tabs={tabs}
-              activeTab={activeTab}
-              onSelectTab={onSelectTab}
-            />
+            {tabs.length > 0 ? (
+              <ProfileTabs
+                tabs={tabs}
+                activeTab={activeTab}
+                onSelectTab={onSelectTab}
+              />
+            ) : null}
 
             <Animated.View style={{ opacity: fadeAnim }}>
               {children}

@@ -224,18 +224,20 @@ export default function CreateRequestScreen() {
     <Screen edges={['top', 'bottom']}>
       <NavHeader title="Pedir presupuesto" solidSurface onBack={handleBack} />
 
-      <Stepper
-        steps={REQUEST_STEPS}
-        current={step}
-        onSelect={(idx) => {
-          if (idx <= step && !isBusy) {
-            setFieldErrors({});
-            setStep(idx);
-          }
-        }}
-      />
-
       <FormScroll>
+        <View style={{ marginHorizontal: -gutter, marginTop: -gutter }}>
+          <Stepper
+            steps={REQUEST_STEPS}
+            current={step}
+            onSelect={(idx) => {
+              if (idx <= step && !isBusy) {
+                setFieldErrors({});
+                setStep(idx);
+              }
+            }}
+          />
+        </View>
+
         <View style={{ gap: space.xs }}>
           <Text variant="kicker" style={{ color: colors.accent }}>
             Paso {step + 1} de {REQUEST_STEPS.length}
@@ -265,7 +267,7 @@ export default function CreateRequestScreen() {
                     <PillTab
                       key={cat.id}
                       label={cat.name}
-                      size="sm"
+                      size="lg"
                       tone="contrast"
                       active={selected}
                       onPress={() => {

@@ -44,7 +44,6 @@ export const notificationService = {
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
           lightColor: '#0284C7',
-          sound: 'default',
           enableVibrate: true,
           showBadge: true,
         });
@@ -54,7 +53,6 @@ export const notificationService = {
           importance: Notifications.AndroidImportance.HIGH,
           vibrationPattern: [0, 300, 150, 300],
           lightColor: '#0284C7',
-          sound: 'default',
         });
       }
     } catch (e) {
@@ -132,7 +130,7 @@ export const notificationService = {
           title: params.title,
           body: params.body,
           data: params.data || {},
-          sound: 'default',
+          sound: true,
           color: '#0284C7',
         },
         trigger: null,
@@ -161,7 +159,7 @@ export const notificationService = {
           title: params.title,
           body: params.body,
           data: params.data || {},
-          sound: 'default',
+          sound: true,
           color: '#0284C7',
         },
         trigger: {
