@@ -39,6 +39,9 @@ function RootNavigator() {
         .getPushToken()
         .then((pushToken) => {
           if (pushToken) {
+            if (__DEV__) {
+              console.log('[PushToken]', pushToken);
+            }
             return notificationsApi.registerPushToken(pushToken);
           }
           return undefined;

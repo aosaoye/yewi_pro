@@ -17,6 +17,7 @@ import {
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RawResponse } from '../common/decorators/raw-response.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { NotificationType } from '../database/enums';
 import { DeleteNotificationsDto } from './dto/delete-notifications.dto';
 import { RegisterPushTokenDto } from './dto/register-push-token.dto';
 import { NotificationsService } from './notifications.service';
@@ -71,6 +72,18 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Eliminar token de notificaciones push del usuario' })
   async unregisterPushToken(@CurrentUser('id') userId: string) {
     return this.notificationsService.unregisterPushToken(userId);
+  }
+
+  @Post('test-push')
+  @ApiOperation({ summary: 'Enviar una notificación push de prueba al usuario actual' })
+  async sendTestPush(@CurrentUser('id') userId: string) {
+    return this.notificationsService.createNotification({
+      userId,
+      type: NotificationType.SYSTEM_ALERT,
+      title: 'Prueba de notificación Yewi',
+      message: 'Si ves esto con la app cerrada, las push remotas funcionan.',
+      link: '/notifications',
+    });
   }
 
   @Delete('batch')
