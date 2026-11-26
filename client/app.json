@@ -17,6 +17,8 @@
       }
     },
     "android": {
+      "package": "com.yewi.pro",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#F8FAFC",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -69,9 +71,9 @@
         }
       },
       "eas": {
-        "projectId": "69cb9d7b-7abc-42a3-8c64-c642f8fcc583"
+        "projectId": "813861c3-3001-491a-824a-288424a96d2d"
       }
     },
-    "owner": "22osaoye"
+    "owner": "aosaoye-yewi"
   }
 }

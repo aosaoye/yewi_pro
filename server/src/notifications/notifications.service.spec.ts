@@ -49,4 +49,32 @@ describe('NotificationsService (TypeORM)', () => {
     expect(notificationRepo.delete).toHaveBeenCalledWith({ userId: 'user-1' });
     expect(res).toEqual({ success: true, count: 4 });
   });
+
+  it('registers and unregisters an Expo push token when userRepo is provided', async () => {
+    const userRepo = {
+      update: vi.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const svcWithUser = new NotificationsService(
+      notificationRepo as any,
+      undefined,
+      userRepo as any,
+    );
+
+    const reg = await svcWithUser.registerPushToken(
+      'user-1',
+      ' ExponentPushToken[abc123] ',
+    );
+    expect(userRepo.update).toHaveBeenCalledWith(
+      { id: 'user-1' },
+      { expoPushToken: 'ExponentPushToken[abc123]' },
+    );
+    expect(reg).toEqual({ success: true });
+
+    const unreg = await svcWithUser.unregisterPushToken('user-1');
+    expect(userRepo.update).toHaveBeenCalledWith(
+      { id: 'user-1' },
+      { expoPushToken: null },
+    );
+    expect(unreg).toEqual({ success: true });
+  });
 });

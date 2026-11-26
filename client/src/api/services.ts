@@ -545,6 +545,10 @@ export const notificationsApi = {
   deleteOne: (id: string) =>
     api.delete(`/notifications/${encodeURIComponent(id)}`),
   clearAll: () => api.delete('/notifications/clear-all'),
+  registerPushToken: (token: string) =>
+    api.post<{ success: boolean }>('/notifications/push-token', { token }),
+  unregisterPushToken: () =>
+    api.delete<{ success: boolean }>('/notifications/push-token'),
 };
 
 export const reviewsApi = {

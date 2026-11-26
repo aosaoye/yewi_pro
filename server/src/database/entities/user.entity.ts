@@ -62,6 +62,9 @@ export class User extends UuidVarcharEntity {
   @Column({ name: 'refresh_token_hash', type: 'text', nullable: true })
   refreshTokenHash!: string | null;
 
+  @Column({ name: 'expo_push_token', type: 'text', nullable: true })
+  expoPushToken!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

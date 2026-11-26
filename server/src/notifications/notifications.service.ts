@@ -1,16 +1,21 @@
-import { Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { RealtimeService } from '../common/realtime/realtime.service';
-import { Notification } from '../database/entities';
+import { Notification, User } from '../database/entities';
 import { NotificationType } from '../database/enums';
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     @InjectRepository(Notification)
     private readonly notificationRepo: Repository<Notification>,
     @Optional() private readonly realtimeService?: RealtimeService,
+    @Optional()
+    @InjectRepository(User)
+    private readonly userRepo?: Repository<User>,
   ) {}
 
   async createNotification(params: {
@@ -36,7 +41,70 @@ export class NotificationsService {
     if (this.realtimeService) {
       this.realtimeService.emitNotification(saved);
     }
+    void this.sendExpoPushNotification(saved);
     return saved;
+  }
+
+  async registerPushToken(userId: string, token: string) {
+    if (!this.userRepo) {
+      return { success: false };
+    }
+    await this.userRepo.update({ id: userId }, { expoPushToken: token.trim() });
+    return { success: true };
+  }
+
+  async unregisterPushToken(userId: string) {
+    if (!this.userRepo) {
+      return { success: false };
+    }
+    await this.userRepo.update({ id: userId }, { expoPushToken: null });
+    return { success: true };
+  }
+
+  private async sendExpoPushNotification(notification: Notification) {
+    if (!this.userRepo) return;
+    try {
+      const user = await this.userRepo.findOne({
+        where: { id: notification.userId },
+        select: { id: true, expoPushToken: true },
+      });
+      const token = user?.expoPushToken?.trim();
+      if (!token || !token.startsWith('ExponentPushToken[')) return;
+
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: token,
+          sound: 'default',
+          title: notification.title,
+          body: notification.message,
+          channelId: 'default',
+          data: {
+            notificationId: notification.id,
+            type: notification.type,
+            link: notification.link,
+            ...(notification.metadata ?? {}),
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        this.logger.warn(
+          `Expo Push API respondió ${response.status} para usuario ${notification.userId}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo enviar push a usuario ${notification.userId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   async getMyNotifications(userId: string) {

@@ -19,6 +19,9 @@ export class DatabaseModule implements OnModuleInit {
       await this.dataSource.query(
         `ALTER TABLE "reviews" ADD COLUMN IF NOT EXISTS "replies" jsonb NOT NULL DEFAULT '[]'::jsonb`,
       );
+      await this.dataSource.query(
+        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "expo_push_token" text`,
+      );
     } catch (error) {
       this.logger.warn(
         `No se pudo verificar la columna reviews.replies al iniciar: ${

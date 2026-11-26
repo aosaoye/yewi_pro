@@ -1,4 +1,13 @@
-import { Controller, Get, Patch, Delete, Param, Body, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -8,8 +17,9 @@ import {
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RawResponse } from '../common/decorators/raw-response.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { NotificationsService } from './notifications.service';
 import { DeleteNotificationsDto } from './dto/delete-notifications.dto';
+import { RegisterPushTokenDto } from './dto/register-push-token.dto';
+import { NotificationsService } from './notifications.service';
 
 @ApiTags('Notifications (Notificaciones & Alertas)')
 @UseGuards(JwtAuthGuard)
@@ -46,6 +56,21 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Marcar notificación como leída' })
   async markAsRead(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.notificationsService.markAsRead(userId, id);
+  }
+
+  @Post('push-token')
+  @ApiOperation({ summary: 'Registrar token de notificaciones push de Expo' })
+  async registerPushToken(
+    @CurrentUser('id') userId: string,
+    @Body() dto: RegisterPushTokenDto,
+  ) {
+    return this.notificationsService.registerPushToken(userId, dto.token);
+  }
+
+  @Delete('push-token')
+  @ApiOperation({ summary: 'Eliminar token de notificaciones push del usuario' })
+  async unregisterPushToken(@CurrentUser('id') userId: string) {
+    return this.notificationsService.unregisterPushToken(userId);
   }
 
   @Delete('batch')

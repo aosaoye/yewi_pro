@@ -22,6 +22,7 @@ import { CLERK_PUBLISHABLE_KEY } from '@/config';
 import { bindQueryLifecycle, persistOptions, queryClient } from '@/lib/queryClient';
 import { realtimeManager } from '@/lib/realtime';
 import { notificationService } from '@/lib/notifications';
+import { notificationsApi } from '@/api/services';
 import { getAccessToken, onSessionChange } from '@/lib/session';
 import { ThemeProvider, Toaster, useTheme } from '@/ui';
 
@@ -33,16 +34,30 @@ function RootNavigator() {
   const router = useRouter();
 
   useEffect(() => {
+    const syncPushToken = () => {
+      void notificationService
+        .getPushToken()
+        .then((pushToken) => {
+          if (pushToken) {
+            return notificationsApi.registerPushToken(pushToken);
+          }
+          return undefined;
+        })
+        .catch(() => {});
+    };
+
     const unbindQueryLifecycle = bindQueryLifecycle();
     void getAccessToken().then((token) => {
       if (token) {
         void realtimeManager.start();
+        syncPushToken();
       }
     });
 
     const unsub = onSessionChange((loggedIn) => {
       if (loggedIn) {
         void realtimeManager.start();
+        syncPushToken();
       } else {
         realtimeManager.stop();
       }

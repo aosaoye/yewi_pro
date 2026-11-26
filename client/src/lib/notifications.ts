@@ -100,7 +100,12 @@ export const notificationService = {
 
       await this.init();
 
-      const tokenData = await Notifications.getExpoPushTokenAsync().catch(() => null);
+      const projectId =
+        Constants.expoConfig?.extra?.eas?.projectId ??
+        Constants.easConfig?.projectId;
+      const tokenData = await Notifications.getExpoPushTokenAsync(
+        projectId ? { projectId } : undefined,
+      ).catch(() => null);
       return tokenData?.data || null;
     } catch {
       return null;
