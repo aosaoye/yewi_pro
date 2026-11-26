@@ -13,7 +13,7 @@ import {
   formatShortDate,
   formatTransactionType,
 } from '@/lib/format';
-import { purchaseWalletTopupIap } from '@/lib/iapService';
+import { payWalletTopupWithStripe } from '@/lib/stripeCheckoutService';
 import { queryClient } from '@/lib/queryClient';
 import {
   Button,
@@ -51,14 +51,14 @@ export default function WalletScreen() {
     busyRef.current = true;
     setBusy(true);
     try {
-      await purchaseWalletTopupIap(amount);
+      await payWalletTopupWithStripe(amount);
       await queryClient.invalidateQueries({ queryKey: ['wallet'] });
       toast.success(`Saldo recargado (${formatEur(amount, 0)})`);
     } catch (err) {
       toast.error(
         err instanceof Error
           ? err.message
-          : 'No se pudo completar la compra integrada',
+          : 'No se pudo completar el pago con Stripe',
       );
     } finally {
       busyRef.current = false;

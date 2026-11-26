@@ -17,7 +17,7 @@ import {
   hasValidRating,
   isOwnProfessional,
 } from '@/lib/format';
-import { purchaseGigOrderIap } from '@/lib/iapService';
+import { payGigOrderWithStripe } from '@/lib/stripeCheckoutService';
 import { queryClient } from '@/lib/queryClient';
 import { payWithRedsysBizum } from '@/lib/redsysService';
 import { getAccessToken } from '@/lib/session';
@@ -156,11 +156,10 @@ export default function GigDetailScreen() {
         setIapLoading(false);
         return;
       }
-      const { order } = await purchaseGigOrderIap({
+      const { order } = await payGigOrderWithStripe({
         gigId: gig.id,
         gigPackageId: activePkg.id,
         extraIds: selectedExtraIds,
-        amount: finalPrice,
       });
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast.success(

@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ChatModule } from './chat/chat.module';
 import { CacheModule } from './common/cache/cache.module';
+import { RedisThrottlerStorage } from './common/cache/redis-throttler.storage';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RealtimeModule } from './common/realtime/realtime.module';
 import configuration from './config/configuration';
@@ -70,13 +71,20 @@ import { WalletModule } from './wallet/wallet.module';
       },
     }),
     ThrottlerModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => [
-        {
-          ttl: (configService.get<number>('throttle.ttl') ?? 60) * 1000,
-          limit: configService.get<number>('throttle.limit') ?? 100,
-        },
-      ],
+      imports: [CacheModule],
+      inject: [ConfigService, RedisThrottlerStorage],
+      useFactory: (
+        configService: ConfigService,
+        storage: RedisThrottlerStorage,
+      ) => ({
+        throttlers: [
+          {
+            ttl: (configService.get<number>('throttle.ttl') ?? 60) * 1000,
+            limit: configService.get<number>('throttle.limit') ?? 100,
+          },
+        ],
+        storage,
+      }),
     }),
     TerminusModule,
     CacheModule,

@@ -11,7 +11,7 @@ import {
   useUnlockLead,
 } from '@/api/hooks';
 import { formatEur, formatLeadStatus, formatShortDate } from '@/lib/format';
-import { purchaseLeadProposalIap } from '@/lib/iapService';
+import { payLeadProposalWithStripe } from '@/lib/stripeCheckoutService';
 import { queryClient } from '@/lib/queryClient';
 import { payWithRedsysBizum } from '@/lib/redsysService';
 import { zodErrorsToMap } from '@/lib/schemas';
@@ -221,13 +221,13 @@ export default function RequestDetailScreen() {
     actionLockRef.current = true;
     setPayingProposalId(proposalId);
     try {
-      const { order } = await purchaseLeadProposalIap(proposalId, amount);
+      const { order } = await payLeadProposalWithStripe(proposalId);
       await queryClient.invalidateQueries({ queryKey: ['leads'] });
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast.success(
         order?.orderNumber
           ? `Presupuesto aceptado · Pedido ${order.orderNumber}`
-          : 'Compra integrada completada',
+          : 'Pago completado con Stripe',
       );
       if (order?.id) {
         router.replace(

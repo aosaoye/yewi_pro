@@ -24,6 +24,7 @@ import { OrdersService } from '../orders/orders.service';
 import { WalletService } from '../wallet/wallet.service';
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { CreateRedsysBizumCheckoutDto } from './dto/redsys-bizum.dto';
+import { CreateStripeCheckoutDto } from './dto/stripe-checkout.dto';
 import {
   RestoreIapPurchasesDto,
   VerifyIapPurchaseDto,
@@ -697,6 +698,244 @@ export class PaymentsService {
     };
   }
 
+  async createStripeCheckoutSession(
+    userId: string,
+    dto: CreateStripeCheckoutDto,
+    requestApiBaseUrl: string,
+  ) {
+    const stripe = this.ensureStripe();
+    const configuredApiUrl =
+      this.configService.get<string>('API_PUBLIC_URL')?.trim() || '';
+    const apiBase = (configuredApiUrl || requestApiBaseUrl).replace(/\/+$/, '');
+    const apiPrefix =
+      this.configService.get<string>('apiPrefix')?.replace(/^\/+|\/+$/g, '') ||
+      'api/v1';
+
+    let amount = 0;
+    let productName = 'Pago Yewi';
+    const metadata: Record<string, string> = {
+      userId,
+      paymentType: dto.purchaseType,
+    };
+
+    if (dto.purchaseType === 'WALLET_TOPUP') {
+      const requested = Number(dto.amount ?? 0);
+      if (!Number.isFinite(requested) || requested < 5 || requested > 5000) {
+        throw new BadRequestException(
+          'El importe de recarga debe estar entre 5 € y 5.000 €',
+        );
+      }
+      amount = Math.round(requested * 100) / 100;
+      productName = `Recarga de saldo Yewi (${amount.toFixed(2)} €)`;
+      metadata.amount = String(amount);
+    } else if (dto.purchaseType === 'GIG_ORDER') {
+      if (!dto.gigPackageId) {
+        throw new BadRequestException(
+          'Falta gigPackageId para iniciar el pago con Stripe',
+        );
+      }
+      const quote = await this.ordersService.resolveGigPackageAndTotals(userId, {
+        gigPackageId: dto.gigPackageId,
+        gigId: dto.gigId,
+        extraIds: dto.extraIds,
+      });
+      amount = Number(quote.totalAmount);
+      productName = `Servicio: ${quote.gig.title}`.slice(0, 120);
+      metadata.gigId = quote.gig.id;
+      metadata.gigPackageId = dto.gigPackageId;
+      if (dto.extraIds?.length) {
+        metadata.extraIds = JSON.stringify(dto.extraIds);
+      }
+    } else if (dto.purchaseType === 'LEAD_PROPOSAL') {
+      if (!dto.proposalId) {
+        throw new BadRequestException(
+          'Falta proposalId para iniciar el pago con Stripe',
+        );
+      }
+      const proposal = await this.dataSource
+        .getRepository(QuoteProposal)
+        .findOne({
+          where: { id: dto.proposalId },
+          relations: { serviceRequest: true },
+        });
+      if (!proposal || !proposal.serviceRequest) {
+        throw new NotFoundException('Presupuesto no encontrado');
+      }
+      if (proposal.serviceRequest.clientId !== userId) {
+        throw new ForbiddenException(
+          'Solo el cliente propietario de la solicitud puede pagar este presupuesto',
+        );
+      }
+      amount = Number(proposal.price);
+      productName = `Presupuesto: ${proposal.serviceRequest.title}`.slice(0, 120);
+      metadata.proposalId = proposal.id;
+    } else {
+      throw new BadRequestException('Tipo de compra no soportado para Stripe');
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Importe inválido para Stripe Checkout');
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: 'eur',
+            unit_amount: Math.round(amount * 100),
+            product_data: {
+              name: productName,
+            },
+          },
+        },
+      ],
+      metadata,
+      success_url: `${apiBase}/${apiPrefix}/payments/stripe/return?status=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${apiBase}/${apiPrefix}/payments/stripe/return?status=cancel`,
+    });
+
+    if (!session.url) {
+      throw new ServiceUnavailableException(
+        'Stripe no devolvió una URL de checkout válida',
+      );
+    }
+
+    return {
+      sessionId: session.id,
+      url: session.url,
+      amount,
+      currency: 'EUR',
+    };
+  }
+
+  buildStripeReturnHtml(status?: string, sessionId?: string) {
+    const safeStatus = status === 'success' ? 'success' : 'cancel';
+    const query = new URLSearchParams({
+      provider: 'stripe',
+      status: safeStatus,
+      ...(sessionId ? { session_id: sessionId } : {}),
+    }).toString();
+    const deepLink = `yewi://payment-return?${query}`;
+    const title =
+      safeStatus === 'success'
+        ? 'Pago completado con Stripe'
+        : 'Pago cancelado';
+
+    return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${title}</title>
+  <meta http-equiv="refresh" content="0;url=${deepLink}" />
+</head>
+<body style="font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:40px 20px;background:#09090B;color:#FAFAFA;">
+  <h2>${title}</h2>
+  <p>Volviendo a Yewi...</p>
+  <p><a href="${deepLink}" style="color:#00B4D8;">Abrir Yewi</a></p>
+  <script>window.location.replace(${JSON.stringify(deepLink)});</script>
+</body>
+</html>`;
+  }
+
+  private async fulfillStripeCheckoutSession(session: Stripe.Checkout.Session) {
+    const txKey = `stripe:checkout:${session.id}`;
+    const cacheKey = `stripe:fulfilled:${session.id}`;
+
+    const cachedMem = this.processedIapTransactions.get(txKey);
+    if (cachedMem) {
+      return { confirmed: true, duplicate: true, result: cachedMem };
+    }
+    if (this.redisCache) {
+      const cached = await this.redisCache.get<{ result: unknown }>(cacheKey);
+      if (cached?.result) {
+        this.processedIapTransactions.set(txKey, cached.result);
+        return { confirmed: true, duplicate: true, result: cached.result };
+      }
+    }
+
+    const metadata = session.metadata ?? {};
+    const userId = metadata.userId;
+    const paymentType = metadata.paymentType;
+    if (!userId || !paymentType) {
+      throw new BadRequestException('Metadatos de sesión Stripe incompletos');
+    }
+
+    let result: unknown;
+    if (paymentType === 'WALLET_TOPUP') {
+      const amount =
+        Number(metadata.amount) || Number((session.amount_total ?? 0) / 100);
+      result = await this.walletService.creditFiatDeposit({
+        userId,
+        amount,
+        sessionId: session.id,
+        paymentIntentId:
+          typeof session.payment_intent === 'string'
+            ? session.payment_intent
+            : undefined,
+      });
+    } else if (paymentType === 'GIG_ORDER') {
+      if (!metadata.gigPackageId) {
+        throw new BadRequestException('Falta gigPackageId en sesión Stripe');
+      }
+      let extraIds: string[] | undefined;
+      if (metadata.extraIds) {
+        try {
+          const parsed = JSON.parse(metadata.extraIds);
+          if (Array.isArray(parsed)) extraIds = parsed;
+        } catch {
+          extraIds = undefined;
+        }
+      }
+      result = await this.ordersService.createGigOrderFromIap(userId, {
+        gigPackageId: metadata.gigPackageId,
+        gigId: metadata.gigId || undefined,
+        extraIds,
+        transactionId: `stripe:${session.id}`,
+        platform: 'stripe',
+        productId: 'stripe_gig_order',
+      });
+    } else if (paymentType === 'LEAD_PROPOSAL') {
+      if (!metadata.proposalId) {
+        throw new BadRequestException('Falta proposalId en sesión Stripe');
+      }
+      result = await this.leadsService.acceptProposalFromIap(userId, {
+        proposalId: metadata.proposalId,
+        transactionId: `stripe:${session.id}`,
+        platform: 'stripe',
+        productId: 'stripe_lead_proposal',
+      });
+    } else {
+      throw new BadRequestException(`Tipo de pago Stripe no soportado: ${paymentType}`);
+    }
+
+    this.processedIapTransactions.set(txKey, result);
+    if (this.redisCache) {
+      await this.redisCache.set(cacheKey, { result }, 86400);
+    }
+
+    return { confirmed: true, duplicate: false, result };
+  }
+
+  async confirmStripeCheckoutSession(userId: string, sessionId: string) {
+    const stripe = this.ensureStripe();
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (!session) {
+      throw new NotFoundException('Sesión de Stripe no encontrada');
+    }
+    if (session.metadata?.userId !== userId) {
+      throw new ForbiddenException('No tienes permiso sobre esta sesión de pago');
+    }
+    if (session.payment_status !== 'paid') {
+      throw new BadRequestException(
+        'El pago con Stripe todavía no está completado',
+      );
+    }
+    return this.fulfillStripeCheckoutSession(session);
+  }
+
   async createCustomerPortalSession(userId: string) {
     const stripe = this.ensureStripe();
     const sub = await this.dataSource
@@ -793,6 +1032,10 @@ export class PaymentsService {
               ? session.payment_intent
               : undefined,
           );
+        } else if (paymentType === 'GIG_ORDER' && userId) {
+          await this.fulfillStripeCheckoutSession(session);
+        } else if (paymentType === 'LEAD_PROPOSAL' && userId) {
+          await this.fulfillStripeCheckoutSession(session);
         } else if (paymentType === 'PRO_SUBSCRIPTION' && userId) {
           await this.upsertUserProSubscription({
             userId,

@@ -465,7 +465,25 @@ export const paymentsApi = {
     api.get<RedsysPaymentStatusResponse>(
       `/payments/redsys/status/${encodeURIComponent(orderRef)}`,
     ),
+  createStripeCheckout: (dto: CreateStripeCheckoutPayload) =>
+    api.post<{ sessionId: string; url: string; amount: number; currency: string }>(
+      '/payments/stripe/checkout',
+      dto,
+    ),
+  confirmStripeCheckout: (sessionId: string) =>
+    api.post<{ confirmed: boolean; duplicate?: boolean; result?: unknown }>(
+      `/payments/stripe/confirm/${encodeURIComponent(sessionId)}`,
+    ),
 };
+
+export interface CreateStripeCheckoutPayload {
+  purchaseType: 'WALLET_TOPUP' | 'GIG_ORDER' | 'LEAD_PROPOSAL';
+  amount?: number;
+  gigId?: string;
+  gigPackageId?: string;
+  extraIds?: string[];
+  proposalId?: string;
+}
 
 export interface CreateRedsysBizumPayload {
   purchaseType: 'GIG_ORDER' | 'LEAD_PROPOSAL';

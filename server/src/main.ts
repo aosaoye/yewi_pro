@@ -86,6 +86,8 @@ async function bootstrap() {
     SwaggerModule.setup('api/docs', app, document);
   }
 
+  app.enableShutdownHooks();
+
   const port = configService.get<number>('port') ?? 3000;
   await app.listen(port, '0.0.0.0');
   logger.log(`Servidor Yewi ejecutándose en puerto ${port}/${apiPrefix}`);

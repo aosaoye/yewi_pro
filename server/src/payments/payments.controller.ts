@@ -31,6 +31,7 @@ import {
   RestoreIapPurchasesDto,
   VerifyIapPurchaseDto,
 } from './dto/verify-iap.dto';
+import { CreateStripeCheckoutDto } from './dto/stripe-checkout.dto';
 import { PaymentsService } from './payments.service';
 
 interface RawBodyRequest extends Request {
@@ -228,6 +229,62 @@ export class PaymentsController {
     @Query('order') order?: string,
   ) {
     return this.paymentsService.buildRedsysReturnHtml(result, order);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post('stripe/checkout')
+  @ApiOperation({
+    summary: 'Crear sesión de Stripe Checkout para recarga de saldo, servicio o presupuesto',
+  })
+  createStripeCheckout(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateStripeCheckoutDto,
+    @Req() req: Request,
+  ) {
+    const proto =
+      (req.headers['x-forwarded-proto'] as string | undefined)
+        ?.split(',')[0]
+        ?.trim() ||
+      req.protocol ||
+      'http';
+    const host =
+      (req.headers['x-forwarded-host'] as string | undefined)
+        ?.split(',')[0]
+        ?.trim() ||
+      req.get('host') ||
+      'localhost:3000';
+    return this.paymentsService.createStripeCheckoutSession(
+      userId,
+      dto,
+      `${proto}://${host}`,
+    );
+  }
+
+  @Public()
+  @Get('stripe/return')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  @ApiOperation({
+    summary: 'Retorno desde Stripe Checkout hacia el deep link de la app',
+  })
+  handleStripeReturn(
+    @Query('status') status?: string,
+    @Query('session_id') sessionId?: string,
+  ) {
+    return this.paymentsService.buildStripeReturnHtml(status, sessionId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post('stripe/confirm/:sessionId')
+  @ApiOperation({
+    summary: 'Confirmar y aplicar idempotentemente una sesión pagada de Stripe Checkout',
+  })
+  confirmStripeCheckout(
+    @CurrentUser('id') userId: string,
+    @Param('sessionId') sessionId: string,
+  ) {
+    return this.paymentsService.confirmStripeCheckoutSession(userId, sessionId);
   }
 
   @UseGuards(JwtAuthGuard)
